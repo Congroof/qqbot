@@ -118,6 +118,12 @@ async fn chat_with_ai(ctx: &mut HandlerContext, key: &ContextKey, user_text: &st
 
     match ctx.ai.chat().create(request).await {
         Ok(response) => {
+            if let Some(usage) = &response.usage {
+                ctx.token_usage.total_requests += 1;
+                ctx.token_usage.prompt_tokens += usage.prompt_tokens;
+                ctx.token_usage.completion_tokens += usage.completion_tokens;
+            }
+
             let text = response.choices.first().and_then(|c| {
                 c.message.content.as_ref().and_then(|c| c.as_text()).map(|s| s.to_string())
             }).unwrap_or_default();
