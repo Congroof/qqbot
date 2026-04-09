@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/napcat-bot",
+    "crates/onebot",
+    "crates/ai-chat-sdk",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
+tungstenite = { version = "0.26", features = ["native-tls"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+eventsource-stream = "0.2"
+futures-core = "0.3"
+futures-util = "0.3"
+pin-project-lite = "0.2"
+bytes = "1"
+rand = "0.9"

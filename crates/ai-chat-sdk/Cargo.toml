@@ -1,0 +1,17 @@
+[package]
+name = "ai-chat-sdk"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+eventsource-stream = { workspace = true }
+futures-core = { workspace = true }
+futures-util = { workspace = true }
+pin-project-lite = { workspace = true }
+bytes = { workspace = true }

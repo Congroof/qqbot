@@ -1,0 +1,41 @@
+version: "3"
+
+services:
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    container_name: napcat
+    restart: always
+    environment:
+      - NAPCAT_UID=${NAPCAT_UID:-1000}
+      - NAPCAT_GID=${NAPCAT_GID:-1000}
+    ports:
+      - 6099:6099
+    networks:
+      - bot-net
+    volumes:
+      - ./data/qq:/app/.config/QQ
+      - ./data/config:/app/napcat/config
+      - ./data/plugins:/app/napcat/plugins
+
+  napcat-bot:
+    build: .
+    container_name: napcat-bot
+    restart: always
+    depends_on:
+      - napcat
+    environment:
+      - ONEBOT_WS_URL=ws://napcat:3000
+      - ONEBOT_ACCESS_TOKEN=${ONEBOT_ACCESS_TOKEN}
+      - AI_BASE_URL=${AI_BASE_URL}
+      - AI_API_KEY=${AI_API_KEY}
+      - AI_GATEWAY_UID=${AI_GATEWAY_UID}
+      - AI_PRODUCT_NAME=${AI_PRODUCT_NAME}
+      - AI_INTENTION_CODE=${AI_INTENTION_CODE}
+      - AI_MODEL=${AI_MODEL}
+      - RUST_LOG=${RUST_LOG:-info}
+    networks:
+      - bot-net
+
+networks:
+  bot-net:
+    driver: bridge
