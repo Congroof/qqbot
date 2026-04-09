@@ -135,6 +135,10 @@ pub enum NotifyEvent {
     Honor(HonorEvent),
     #[serde(rename = "profile_like")]
     ProfileLike(ProfileLikeEvent),
+    #[serde(rename = "input_status")]
+    InputStatus(InputStatusEvent),
+    #[serde(other)]
+    Unknown,
 }
 
 /// 群内戳一戳
@@ -165,6 +169,20 @@ pub struct HonorEvent {
     pub group_id: i64,
     pub honor_type: String,
     pub user_id: i64,
+}
+
+/// 输入状态通知（NapCat 扩展）
+#[derive(Debug, Clone, Deserialize)]
+pub struct InputStatusEvent {
+    pub time: i64,
+    pub self_id: i64,
+    pub user_id: i64,
+    #[serde(default)]
+    pub group_id: Option<i64>,
+    #[serde(default)]
+    pub event_type: Option<i32>,
+    #[serde(default)]
+    pub status_text: Option<String>,
 }
 
 /// 资料卡点赞通知（NapCat 扩展）

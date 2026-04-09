@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use ai_chat_sdk::{ChatRequest, Message as AiMessage, ResponseFormat};
+use ai_chat_sdk::{ChatRequest, Message as AiMessage, ResponseFormat, RetryStrategy};
 use onebot::api::payload::{SendGroupMsg, SendPrivateMsg};
 use onebot::event::message::{GroupMessageEvent, PrivateMessageEvent};
 use onebot::message::MessageSegment;
@@ -113,6 +113,7 @@ async fn chat_with_ai(ctx: &mut HandlerContext, key: &ContextKey, user_text: &st
         .temperature(0.8)
         .max_completion_tokens(512)
         .response_format(ResponseFormat::text())
+        .retry_strategy(RetryStrategy { retry_count: 3, timeout: 30 })
         .build();
 
     match ctx.ai.chat().create(request).await {
