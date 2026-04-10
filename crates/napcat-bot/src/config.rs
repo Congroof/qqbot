@@ -9,6 +9,7 @@ pub struct BotConfig {
     pub ai_product_name: String,
     pub ai_intention_code: String,
     pub ai_model: String,
+    pub data_dir: String,
 }
 
 impl BotConfig {
@@ -22,6 +23,7 @@ impl BotConfig {
             ai_product_name: required_env("AI_PRODUCT_NAME"),
             ai_intention_code: required_env("AI_INTENTION_CODE"),
             ai_model: env::var("AI_MODEL").unwrap_or_else(|_| "ali/qwen-plus".into()),
+            data_dir: env::var("DATA_DIR").unwrap_or_else(|_| "./data".into()),
         }
     }
 }

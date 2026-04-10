@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Instant;
 
 use ai_chat_sdk::{ChatRequest, Message as AiMessage, ResponseFormat, RetryStrategy};
@@ -5,12 +6,38 @@ use onebot::api::payload::{SendGroupMsg, SendPrivateMsg};
 use onebot::event::message::{GroupMessageEvent, PrivateMessageEvent};
 use onebot::message::MessageSegment;
 use onebot::Message;
+use rand::Rng;
 
-use super::{ContextKey, HandlerContext};
+use super::{extract_plain_text, ContextKey, HandlerContext};
 
-const SYSTEM_PROMPT: &str = "你是一个QQ群里的智能助手，名字叫清，回复要简洁有趣，适合聊天场景。不要使用 Markdown 格式。";
+/// 每个群的 AI 角色 prompt（群隔离），由管理员通过 `#角色` 设置。
+pub type GroupRoleMap = HashMap<i64, String>;
+
+const GROUP_PROMPT: &str = "\
+你是一个QQ群里的智能助手，名字叫清。\
+你的回复风格：简洁、有趣、接地气，像群友一样聊天。\
+根据问题复杂度自然调整回复长度——简单问题几个字就行，复杂话题可以多说几句。\
+不要使用 Markdown 格式，不要用列表。";
+
+const PRIVATE_PROMPT: &str = "\
+你是一个叫清的AI好友，正在和对方私聊。\
+聊天风格轻松自然，像朋友之间发消息，偶尔可以用语气词。\
+回复长度随话题自然变化：闲聊可以很短，认真讨论就多说几句。\
+不要使用 Markdown 格式，不要用列表。";
+
 const MAX_HISTORY: usize = 20;
 const SESSION_TIMEOUT_SECS: u64 = 300;
+const TOKEN_RANGE: (u32, u32) = (128, 512);
+
+fn builtin_roles() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("猫娘", "你是一只可爱的猫娘，说话带有猫的语气，句尾经常加「喵~」。性格活泼黏人，偶尔傲娇。不要使用 Markdown 格式。"),
+        ("毒舌", "你是一个毒舌吐槽役，说话犀利但有趣，擅长一针见血的吐槽，但不会真的伤人。不要使用 Markdown 格式。"),
+        ("哲学家", "你是一个深邃的哲学家，喜欢用哲学的角度思考问题，偶尔引用名人名言，但说话要通俗易懂。不要使用 Markdown 格式。"),
+        ("老中医", "你是一个调侃版的老中医，喜欢用中医养生的口吻聊天，什么都能扯到养生上。不要使用 Markdown 格式。"),
+        ("诗人", "你是一个浪漫的诗人，喜欢用诗意的语言回复，偶尔即兴作诗。不要使用 Markdown 格式。"),
+    ]
+}
 
 pub struct ChatSession {
     pub messages: Vec<AiMessage>,
@@ -49,9 +76,65 @@ impl ChatSession {
     }
 }
 
+fn is_admin(evt: &GroupMessageEvent) -> bool {
+    matches!(evt.sender.role.as_deref(), Some("admin" | "owner"))
+}
+
+/// 群聊角色切换（仅管理员，群隔离）：`#角色 猫娘`
+pub async fn handle_group_role_switch(ctx: &mut HandlerContext, evt: &GroupMessageEvent) -> bool {
+    let text = extract_plain_text(&evt.message);
+    let Some(role_name) = text.strip_prefix("#角色").map(|s| s.trim()) else {
+        return false;
+    };
+
+    if !is_admin(evt) {
+        let _ = ctx.api.call(SendGroupMsg {
+            group_id: evt.group_id,
+            message: Message::from(vec![
+                MessageSegment::reply(evt.message_id.to_string()),
+                MessageSegment::text("仅管理员可以切换角色哦~"),
+            ]),
+            auto_escape: None,
+        }).await;
+        return true;
+    }
+
+    let reply = if role_name == "默认" || role_name.is_empty() {
+        ctx.group_roles.remove(&evt.group_id);
+        cleanup_group_sessions(ctx, evt.group_id);
+        "已恢复默认人设~".to_string()
+    } else {
+        let prompt = if let Some((_, p)) = builtin_roles().iter().find(|(n, _)| *n == role_name) {
+            p.to_string()
+        } else {
+            format!("你正在扮演「{role_name}」这个角色，请完全以该角色的语气和风格说话。不要使用 Markdown 格式。")
+        };
+        ctx.group_roles.insert(evt.group_id, prompt);
+        cleanup_group_sessions(ctx, evt.group_id);
+        format!("已切换为「{role_name}」模式~")
+    };
+
+    let _ = ctx.api.call(SendGroupMsg {
+        group_id: evt.group_id,
+        message: Message::from(vec![
+            MessageSegment::reply(evt.message_id.to_string()),
+            MessageSegment::text(reply),
+        ]),
+        auto_escape: None,
+    }).await;
+
+    true
+}
+
+fn cleanup_group_sessions(ctx: &mut HandlerContext, group_id: i64) {
+    ctx.chat_sessions.retain(|key, _| {
+        !matches!(key, ContextKey::Group(gid, _) if *gid == group_id)
+    });
+}
+
 /// 私聊消息 -> 直接触发 AI 聊天
 pub async fn handle_private(ctx: &mut HandlerContext, evt: &PrivateMessageEvent) {
-    let text = extract_text(&evt.message);
+    let text = extract_plain_text(&evt.message);
     if text.is_empty() {
         return;
     }
@@ -101,17 +184,26 @@ pub async fn handle_group(ctx: &mut HandlerContext, evt: &GroupMessageEvent) {
 async fn chat_with_ai(ctx: &mut HandlerContext, key: &ContextKey, user_text: &str) -> Option<String> {
     cleanup_expired_sessions(ctx);
 
+    let default_prompt = match key {
+        ContextKey::Private(_) => PRIVATE_PROMPT.to_string(),
+        ContextKey::Group(gid, _) => {
+            ctx.group_roles.get(gid).cloned().unwrap_or_else(|| GROUP_PROMPT.to_string())
+        }
+    };
+
     let session = ctx.chat_sessions.entry(key.clone()).or_insert_with(ChatSession::new);
     session.push_user(user_text);
 
-    let mut messages = vec![AiMessage::system(SYSTEM_PROMPT)];
+    let mut messages = vec![AiMessage::system(&default_prompt)];
     messages.extend(session.messages.iter().cloned());
+
+    let max_tokens = rand::rng().random_range(TOKEN_RANGE.0..=TOKEN_RANGE.1);
 
     let request = ChatRequest::builder()
         .model(&ctx.config.ai_model)
         .messages(messages)
-        .temperature(0.8)
-        .max_completion_tokens(512)
+        .temperature(0.9)
+        .max_completion_tokens(max_tokens)
         .response_format(ResponseFormat::text())
         .retry_strategy(RetryStrategy { retry_count: 3, timeout: 30 })
         .build();
@@ -122,6 +214,7 @@ async fn chat_with_ai(ctx: &mut HandlerContext, key: &ContextKey, user_text: &st
                 ctx.token_usage.total_requests += 1;
                 ctx.token_usage.prompt_tokens += usage.prompt_tokens;
                 ctx.token_usage.completion_tokens += usage.completion_tokens;
+                ctx.token_usage.save();
             }
 
             let text = response.choices.first().and_then(|c| {
@@ -154,26 +247,6 @@ fn is_at_bot(msg: &Message, self_id: i64) -> bool {
         }
     }
     false
-}
-
-fn extract_text(msg: &Message) -> String {
-    match msg {
-        Message::String(s) => s.trim().to_string(),
-        Message::Array(segs) => {
-            segs.iter()
-                .filter_map(|seg| {
-                    if let MessageSegment::Text { text } = seg {
-                        Some(text.trim())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(" ")
-                .trim()
-                .to_string()
-        }
-    }
 }
 
 fn extract_text_without_at(msg: &Message) -> String {

@@ -32,7 +32,10 @@ services:
       - AI_PRODUCT_NAME=${AI_PRODUCT_NAME}
       - AI_INTENTION_CODE=${AI_INTENTION_CODE}
       - AI_MODEL=${AI_MODEL}
+      - DATA_DIR=/app/napcat/botcfgdata
       - RUST_LOG=${RUST_LOG:-info}
+    volumes:
+      - ./data/bot:/app/napcat/botcfgdata
     networks:
       - bot-net
 

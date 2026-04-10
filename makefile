@@ -1,3 +1,5 @@
+export DATA_DIR=./data/bot
+
 dev:
 	cargo run --bin napcat-bot
 

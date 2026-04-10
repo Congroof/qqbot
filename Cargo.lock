@@ -753,6 +753,7 @@ dependencies = [
  "ai-chat-sdk",
  "onebot",
  "rand",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
