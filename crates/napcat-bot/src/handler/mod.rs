@@ -2,7 +2,6 @@ pub mod ai_chat;
 pub mod cmd;
 pub mod fortune;
 pub mod idiom;
-pub mod keyword;
 pub mod like;
 pub mod poke;
 pub mod quote;
@@ -24,7 +23,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::BotConfig;
 use self::ai_chat::{ChatSession, GroupRoleMap};
-use self::keyword::KeywordStore;
 use self::quote::QuoteStore;
 use self::recall::RecallToggle;
 use self::repeater::RepeatState;
@@ -159,7 +157,6 @@ pub struct HandlerContext {
     pub msg_stats: MsgStats,
     #[allow(dead_code)]
     pub quotes: QuoteStore,
-    pub keywords: KeywordStore,
     pub group_roles: GroupRoleMap,
     pub recall_toggle: RecallToggle,
 }
@@ -169,7 +166,6 @@ impl HandlerContext {
         let token_usage = TokenUsage::load(&config.data_dir);
         let msg_stats = MsgStats::load(&config.data_dir);
         let quotes = QuoteStore::load(&config.data_dir);
-        let keywords = KeywordStore::load(&config.data_dir);
         let recall_toggle = RecallToggle::load(&config.data_dir);
         Self {
             api,
@@ -185,7 +181,6 @@ impl HandlerContext {
             pending_verifications: HashMap::new(),
             msg_stats,
             quotes,
-            keywords,
             group_roles: HashMap::new(),
             recall_toggle,
         }
@@ -258,9 +253,6 @@ pub async fn dispatch(ctx: &mut HandlerContext, event: &Event) {
                         return;
                     }
                     if recall::handle_recall_cmd(ctx, evt).await {
-                        return;
-                    }
-                    if keyword::handle_keyword(ctx, evt).await {
                         return;
                     }
                     if like::handle_group_like(ctx, evt).await {

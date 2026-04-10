@@ -2,3 +2,4 @@
 /onebot-11
 .env
 /data
+.DS_Store
