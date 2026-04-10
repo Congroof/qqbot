@@ -14,8 +14,7 @@ services:
       - bot-net
     volumes:
       - ./data/qq:/app/.config/QQ
-      - ./data/config:/app/napcat/config
-      - ./data/plugins:/app/napcat/plugins
+      - ./data/napcat:/app/napcat
 
   napcat-bot:
     build: .

@@ -9,6 +9,10 @@ build:
 up:
 	NAPCAT_UID=$(shell id -u) NAPCAT_GID=$(shell id -g) docker-compose up -d
 
+deploy:
+	docker-compose build napcat-bot
+	NAPCAT_UID=$(shell id -u) NAPCAT_GID=$(shell id -g) docker-compose up -d napcat-bot
+
 down:
 	docker-compose down
 
