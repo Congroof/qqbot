@@ -44,7 +44,7 @@ pub struct CachedMessage {
     pub user_id: i64,
     pub nickname: String,
     pub text: String,
-    pub raw_message: String,
+    pub message: onebot::Message,
     pub message_id: i64,
 }
 
@@ -198,7 +198,7 @@ impl HandlerContext {
             user_id: evt.user_id,
             nickname,
             text,
-            raw_message: evt.raw_message.clone(),
+            message: evt.message.clone(),
             message_id: evt.message_id,
         });
         if cache.len() > MSG_CACHE_PER_GROUP {

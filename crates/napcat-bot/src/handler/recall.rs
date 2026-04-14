@@ -124,16 +124,16 @@ pub async fn handle_group_recall(ctx: &HandlerContext, evt: &GroupRecallEvent) {
     let Some(cache) = ctx.message_cache.get(&evt.group_id) else { return };
     let Some(msg) = cache.iter().find(|m| m.message_id == evt.message_id) else { return };
 
-    let content = if msg.raw_message.is_empty() { &msg.text } else { &msg.raw_message };
-    if content.is_empty() {
-        return;
-    }
-
-    let text = format!("{} 撤回了一条消息：{}", msg.nickname, content);
+    let tip = format!("{} 撤回了一条消息", msg.nickname);
+    let _ = ctx.api.call(SendGroupMsg {
+        group_id: evt.group_id,
+        message: Message::from(vec![MessageSegment::text(&tip)]),
+        auto_escape: None,
+    }).await;
 
     let _ = ctx.api.call(SendGroupMsg {
         group_id: evt.group_id,
-        message: Message::from(vec![MessageSegment::text(text)]),
+        message: msg.message.clone(),
         auto_escape: None,
     }).await;
 }
