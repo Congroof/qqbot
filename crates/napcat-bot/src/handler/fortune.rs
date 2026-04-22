@@ -9,10 +9,8 @@ use super::{extract_plain_text, HandlerContext};
 const FORTUNE_PROMPT: &str = "\
 你是一个有趣的运势生成器。请为用户生成今日运势，包含以下内容：\
 1. 运势等级（大吉/中吉/小吉/末吉/凶/大凶）\
-2. 幸运数字（1-99）\
-3. 幸运颜色\
-4. 一句话运势描述（诙谐有趣）\
-5. 一条今日建议\
+2. 一句话运势描述）\
+3. 一条今日建议\
 格式紧凑，不要用 Markdown，不要用列表符号，用 emoji 分隔各项。总共不超过 100 字。";
 
 pub async fn handle_fortune(ctx: &mut HandlerContext, evt: &GroupMessageEvent) -> bool {
