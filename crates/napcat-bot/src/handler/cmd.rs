@@ -59,13 +59,16 @@ fn dispatch_cmd(ctx: &HandlerContext, cmd: &str) -> String {
 const FORWARD_USAGE: &str = "\
 用法（多行）：\n\
 #cmd forward <群号>\n\
-<QQ号>[|昵称] <消息内容>\n\
-<QQ号>[|昵称] <消息内容>\n\
+<QQ号>|<昵称> <消息内容>\n\
+<QQ号>|<昵称> <消息内容>\n\
 ...\n\
+\n\
+说明：每行用 `|` 分隔 QQ 与昵称，再用空格分隔昵称与正文；\n\
+昵称里如果含空格，请改用其它字符或下划线代替。\n\
 \n\
 示例：\n\
 #cmd forward 1038115684\n\
-2862858494 我是大笨蛋\n\
+2862858494|清 我是大笨蛋\n\
 2469930868|CC 确实";
 
 async fn handle_forward(ctx: &HandlerContext, body: &str) -> String {
@@ -142,23 +145,24 @@ fn parse_forward_body(body: &str) -> Result<ParsedForward, String> {
     Ok(ParsedForward { group_id, nodes })
 }
 
-/// 解析单行：`<qq>[|<nickname>] <content>`
+/// 解析单行：`<qq>|<nickname> <content>`
 fn parse_node_line(line: &str) -> Result<ParsedNode, String> {
     let (head, content) = line
         .split_once(char::is_whitespace)
-        .ok_or("缺少消息内容（QQ号 与 内容之间用空格分隔）")?;
+        .ok_or("缺少消息内容（昵称 与 内容之间用空格分隔）")?;
     let content = content.trim();
     if content.is_empty() {
         return Err("消息内容为空".into());
     }
 
-    let (qq_str, nickname_opt) = match head.split_once('|') {
-        Some((qq, nick)) => (qq, Some(nick.trim().to_string())),
-        None => (head, None),
-    };
+    let (qq_str, nickname) = head
+        .split_once('|')
+        .ok_or("缺少昵称（QQ号 与 昵称之间用 `|` 分隔）")?;
+    let nickname = nickname.trim().to_string();
+    if nickname.is_empty() {
+        return Err("昵称为空".into());
+    }
     let user_id: i64 = qq_str.trim().parse().map_err(|_| format!("QQ号不合法：`{qq_str}`"))?;
-
-    let nickname = nickname_opt.filter(|n| !n.is_empty()).unwrap_or_default();
 
     Ok(ParsedNode {
         user_id,
@@ -193,7 +197,7 @@ fn format_help() -> String {
 --- 私聊管理指令 ---\n\
 #cmd stats - 运行状态 & Token 用量\n\
 #cmd help  - 显示本帮助\n\
-#cmd forward <群号>\\n<qq>[|昵称] <内容>...  - 发送群合并转发\n\
+#cmd forward <群号>\\n<qq>|<昵称> <内容>...  - 发送群合并转发\n\
 \n\
 --- 群聊功能 ---\n\
 运势 / 求签     - 今日运势\n\
