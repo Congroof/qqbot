@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use super::resp;
 use super::ApiAction;
-use crate::message::Message;
+use crate::message::{Message, MessageSegment};
 
 // ============================================================
 // 消息相关
@@ -74,6 +74,32 @@ pub struct GetForwardMsg {
 impl ApiAction for GetForwardMsg {
     const ACTION: &'static str = "get_forward_msg";
     type Response = resp::GetForwardMsgResp;
+}
+
+/// 发送群合并转发消息（NapCat / go-cqhttp 扩展）。
+///
+/// `messages` 里每个元素必须是 `MessageSegment::Node`。
+#[derive(Debug, Serialize)]
+pub struct SendGroupForwardMsg {
+    pub group_id: i64,
+    pub messages: Vec<MessageSegment>,
+}
+impl ApiAction for SendGroupForwardMsg {
+    const ACTION: &'static str = "send_group_forward_msg";
+    type Response = resp::SendMsgResp;
+}
+
+/// 发送私聊合并转发消息（NapCat / go-cqhttp 扩展）。
+///
+/// `messages` 里每个元素必须是 `MessageSegment::Node`。
+#[derive(Debug, Serialize)]
+pub struct SendPrivateForwardMsg {
+    pub user_id: i64,
+    pub messages: Vec<MessageSegment>,
+}
+impl ApiAction for SendPrivateForwardMsg {
+    const ACTION: &'static str = "send_private_forward_msg";
+    type Response = resp::SendMsgResp;
 }
 
 // ============================================================
