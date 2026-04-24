@@ -10,6 +10,10 @@ pub struct BotConfig {
     pub ai_intention_code: String,
     pub ai_model: String,
     pub data_dir: String,
+    /// 每日定时点赞任务是否启用。
+    pub schedule_like_enabled: bool,
+    /// 本地时区相对 UTC 的小时偏移（默认 +8，北京时间）。
+    pub schedule_tz_offset_hours: i64,
 }
 
 impl BotConfig {
@@ -24,6 +28,14 @@ impl BotConfig {
             ai_intention_code: required_env("AI_INTENTION_CODE"),
             ai_model: env::var("AI_MODEL").unwrap_or_else(|_| "ali/qwen-plus".into()),
             data_dir: env::var("DATA_DIR").unwrap_or_else(|_| "./data".into()),
+            schedule_like_enabled: env::var("SCHEDULE_LIKE_ENABLED")
+                .ok()
+                .map(|v| !matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "false" | "no" | "off"))
+                .unwrap_or(true),
+            schedule_tz_offset_hours: env::var("SCHEDULE_TZ_OFFSET_HOURS")
+                .ok()
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(8),
         }
     }
 }

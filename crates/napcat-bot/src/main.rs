@@ -1,5 +1,6 @@
 mod config;
 mod handler;
+mod scheduler;
 
 use ai_chat_sdk::AiClient;
 use onebot::{WsClient, WsConfig};
@@ -37,6 +38,12 @@ async fn main() {
         .expect("failed to connect to OneBot WebSocket");
 
     tracing::info!(url = %config.ws_url, "bot started");
+
+    if config.schedule_like_enabled {
+        scheduler::spawn_daily_like_task(ws.api().clone(), config.schedule_tz_offset_hours);
+    } else {
+        tracing::info!("daily like scheduler disabled via SCHEDULE_LIKE_ENABLED");
+    }
 
     let mut ctx = HandlerContext::new(ws.api().clone(), ai, config);
 
