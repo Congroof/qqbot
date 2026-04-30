@@ -14,7 +14,7 @@ const TARGET_MINUTE: i64 = 30;
 const BATCH_SIZE: i32 = 10;
 /// 每个成员最多送 50 个赞（5 批 × 10）。
 const MAX_BATCHES: i32 = 5;
-const DELAY_BETWEEN_BATCHES_MS: u64 = 200;
+const DELAY_BETWEEN_BATCHES_MS: u64 = 1000;
 const DELAY_BETWEEN_MEMBERS_MS: u64 = 500;
 const DELAY_BETWEEN_GROUPS_MS: u64 = 2000;
 
@@ -125,18 +125,18 @@ async fn run_daily_like(api: &ApiCaller) -> Result<(), String> {
         }
 
         if let Some(owner_id) = owner_id {
-            if owner_id != self_id {
-                notify_owner(
-                    api,
-                    self_id,
-                    &self_nickname,
-                    owner_id,
-                    &group.group_name,
-                    group_id,
-                    &group_results,
-                )
-                .await;
-            }
+            // if owner_id != self_id {
+            //     notify_owner(
+            //         api,
+            //         self_id,
+            //         &self_nickname,
+            //         owner_id,
+            //         &group.group_name,
+            //         group_id,
+            //         &group_results,
+            //     )
+            //     .await;
+            // }
         } else {
             tracing::debug!(group_id, "no owner found, skip owner notification");
         }

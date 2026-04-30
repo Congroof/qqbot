@@ -14,6 +14,8 @@ pub struct BotConfig {
     pub schedule_like_enabled: bool,
     /// 本地时区相对 UTC 的小时偏移（默认 +8，北京时间）。
     pub schedule_tz_offset_hours: i64,
+    /// DeepLX 翻译 API 密钥
+    pub deeplx_api_key: Option<String>,
 }
 
 impl BotConfig {
@@ -36,6 +38,7 @@ impl BotConfig {
                 .ok()
                 .and_then(|v| v.trim().parse().ok())
                 .unwrap_or(8),
+            deeplx_api_key: optional_env("DEEPLX_API_KEY"),
         }
     }
 }

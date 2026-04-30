@@ -12,3 +12,6 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 rand = { workspace = true }
+reqwest = { workspace = true }
+edge-tts-rust = "0.1"
+base64 = "0.22"

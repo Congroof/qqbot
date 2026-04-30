@@ -11,6 +11,7 @@ pub mod request;
 pub mod stats;
 pub mod summary;
 pub mod verify;
+pub mod vocab;
 
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -28,6 +29,7 @@ use self::recall::RecallToggle;
 use self::repeater::RepeatState;
 use self::stats::MsgStats;
 use self::verify::Verification;
+use self::vocab::Dictionary;
 
 /// 会话上下文 key：私聊按 user_id，群聊按 (group_id, user_id)。
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -159,6 +161,7 @@ pub struct HandlerContext {
     pub quotes: QuoteStore,
     pub group_roles: GroupRoleMap,
     pub recall_toggle: RecallToggle,
+    pub dictionary: Dictionary,
 }
 
 impl HandlerContext {
@@ -167,6 +170,7 @@ impl HandlerContext {
         let msg_stats = MsgStats::load(&config.data_dir);
         let quotes = QuoteStore::load(&config.data_dir);
         let recall_toggle = RecallToggle::load(&config.data_dir);
+        let dictionary = Dictionary::load(&config.data_dir);
         Self {
             api,
             ai,
@@ -183,6 +187,7 @@ impl HandlerContext {
             quotes,
             group_roles: HashMap::new(),
             recall_toggle,
+            dictionary,
         }
     }
 
@@ -205,6 +210,26 @@ impl HandlerContext {
             cache.pop_front();
         }
     }
+}
+
+use onebot::api::payload::SendGroupMsg;
+
+async fn handle_group_help(ctx: &HandlerContext, evt: &onebot::event::message::GroupMessageEvent) -> bool {
+    let text = extract_plain_text(&evt.message);
+    if text.trim() != "#cmd help" {
+        return false;
+    }
+
+    let _ = ctx.api.call(SendGroupMsg {
+        group_id: evt.group_id,
+        message: onebot::Message::from(vec![
+            onebot::message::MessageSegment::reply(evt.message_id.to_string()),
+            onebot::message::MessageSegment::text(cmd::format_help()),
+        ]),
+        auto_escape: None,
+    }).await;
+
+    true
 }
 
 pub fn extract_plain_text(msg: &onebot::Message) -> String {
@@ -237,7 +262,8 @@ pub async fn dispatch(ctx: &mut HandlerContext, event: &Event) {
                     if cmd::handle_private_cmd(ctx, evt).await {
                         return;
                     }
-                    ai_chat::handle_private(ctx, evt).await;
+                    // 私聊 AI 聊天已禁用，避免误触
+                    // ai_chat::handle_private(ctx, evt).await;
                 }
                 onebot::event::MessageEvent::Group(evt) => {
                     ctx.self_id = evt.self_id;
@@ -249,6 +275,9 @@ pub async fn dispatch(ctx: &mut HandlerContext, event: &Event) {
                     stats::record_message(ctx, evt);
                     quote::maybe_collect(ctx, evt);
 
+                    if handle_group_help(ctx, evt).await {
+                        return;
+                    }
                     if verify::handle_answer(ctx, evt).await {
                         return;
                     }
@@ -265,6 +294,9 @@ pub async fn dispatch(ctx: &mut HandlerContext, event: &Event) {
                         return;
                     }
                     if idiom::handle_idiom(ctx, evt).await {
+                        return;
+                    }
+                    if vocab::handle_vocab(ctx, evt).await {
                         return;
                     }
                     if stats::handle_stats(ctx, evt).await {

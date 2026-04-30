@@ -1,9 +1,10 @@
-use onebot::api::payload::{SendGroupForwardMsg, SendPrivateMsg};
+use onebot::api::payload::{SendGroupForwardMsg, SendPrivateForwardMsg, SendPrivateMsg};
 use onebot::event::message::PrivateMessageEvent;
 use onebot::message::MessageSegment;
 use onebot::Message;
 
 use super::HandlerContext;
+use super::vocab;
 
 pub async fn handle_private_cmd(ctx: &mut HandlerContext, evt: &PrivateMessageEvent) -> bool {
     let text = extract_plain_text_preserve_newlines(&evt.message);
@@ -13,10 +14,22 @@ pub async fn handle_private_cmd(ctx: &mut HandlerContext, evt: &PrivateMessageEv
     };
 
     let cmd = cmd.trim_start_matches(' ').trim_end();
+    let sender_id = evt.user_id;
 
-    // `forward` 命令是多行的且需要异步调用 API，单独处理。
-    let reply = if let Some(body) = cmd.strip_prefix("forward") {
-        handle_forward(ctx, body).await
+    // `word` 命令需要发送语音，单独处理。
+    if let Some(word) = cmd.strip_prefix("word ") {
+        let word = word.trim();
+        if !word.is_empty() {
+            vocab::handle_private_vocab(ctx, evt.user_id, word).await;
+            return true;
+        }
+    }
+
+    // `forward` / `forward_private` 命令是多行的且需要异步调用 API，单独处理。
+    let reply = if let Some(body) = cmd.strip_prefix("forward_private") {
+        handle_forward_private(ctx, body, sender_id).await
+    } else if let Some(body) = cmd.strip_prefix("forward") {
+        handle_forward_group(ctx, body, sender_id).await
     } else {
         dispatch_cmd(ctx, cmd)
     };
@@ -56,25 +69,25 @@ fn dispatch_cmd(ctx: &HandlerContext, cmd: &str) -> String {
 // forward: 发送群合并转发
 // ============================================================
 
-const FORWARD_USAGE: &str = "\
-用法（多行）：\n\
+const FORWARD_GROUP_USAGE: &str = "\
+用法（多行，支持任意多条消息）：\n\
 #cmd forward <群号>\n\
-<QQ号>|<昵称> <消息内容>\n\
-<QQ号>|<昵称> <消息内容>\n\
-...\n\
+<QQ号>/<昵称> <消息内容>\n\
+<QQ号>/<昵称> <消息内容>\n\
+...（一行一条，可以写很多行）\n\
 \n\
-说明：每行用 `|` 分隔 QQ 与昵称，再用空格分隔昵称与正文；\n\
-昵称里如果含空格，请改用其它字符或下划线代替。\n\
+说明：每行用 `/` 分隔 QQ 与昵称，再用空格分隔昵称与正文。\n\
 \n\
 示例：\n\
-#cmd forward 1038115684\n\
-2862858494|清 我是大笨蛋\n\
-2469930868|CC 确实";
+#cmd forward 123456789\n\
+10001/张三 你好呀\n\
+10002/李四 今天天气不错\n\
+10003/王五 我也觉得";
 
-async fn handle_forward(ctx: &HandlerContext, body: &str) -> String {
-    let parsed = match parse_forward_body(body) {
+async fn handle_forward_group(ctx: &HandlerContext, body: &str, _sender_id: i64) -> String {
+    let parsed = match parse_forward_body(body, "群号") {
         Ok(p) => p,
-        Err(e) => return format!("解析失败：{e}\n\n{FORWARD_USAGE}"),
+        Err(e) => return format!("解析失败：{e}\n\n{FORWARD_GROUP_USAGE}"),
     };
 
     let nodes: Vec<MessageSegment> = parsed
@@ -92,18 +105,68 @@ async fn handle_forward(ctx: &HandlerContext, body: &str) -> String {
     match ctx
         .api
         .call(SendGroupForwardMsg {
-            group_id: parsed.group_id,
+            group_id: parsed.target_id,
             messages: nodes,
         })
         .await
     {
-        Ok(_) => format!("已向群 {} 发送 {} 条节点的合并转发。", parsed.group_id, count),
+        Ok(_) => format!("已向群 {} 发送 {} 条节点的合并转发。", parsed.target_id, count),
+        Err(e) => format!("发送失败：{e}"),
+    }
+}
+
+// ============================================================
+// forward_private: 发送私聊合并转发
+// ============================================================
+
+const FORWARD_PRIVATE_USAGE: &str = "\
+用法（多行，支持任意多条消息）：\n\
+#cmd forward_private\n\
+<QQ号>/<昵称> <消息内容>\n\
+<QQ号>/<昵称> <消息内容>\n\
+...（一行一条，可以写很多行）\n\
+\n\
+说明：每行用 `/` 分隔 QQ 与昵称，再用空格分隔昵称与正文。\n\
+消息会发送给当前私聊对象（即你自己）。\n\
+\n\
+示例：\n\
+#cmd forward_private\n\
+10001/张三 你好呀\n\
+10002/李四 今天天气不错\n\
+10003/王五 我也觉得";
+
+async fn handle_forward_private(ctx: &HandlerContext, body: &str, sender_id: i64) -> String {
+    let parsed = match parse_forward_body_no_target(body) {
+        Ok(p) => p,
+        Err(e) => return format!("解析失败：{e}\n\n{FORWARD_PRIVATE_USAGE}"),
+    };
+
+    let nodes: Vec<MessageSegment> = parsed
+        .into_iter()
+        .map(|n| MessageSegment::Node {
+            id: None,
+            user_id: Some(n.user_id.to_string()),
+            nickname: Some(n.nickname),
+            content: Some(Message::from(vec![MessageSegment::Text { text: n.content }])),
+        })
+        .collect();
+
+    let count = nodes.len();
+    match ctx
+        .api
+        .call(SendPrivateForwardMsg {
+            user_id: sender_id,
+            messages: nodes,
+        })
+        .await
+    {
+        Ok(_) => format!("已向你发送 {} 条节点的私聊合并转发。", count),
         Err(e) => format!("发送失败：{e}"),
     }
 }
 
 struct ParsedForward {
-    group_id: i64,
+    target_id: i64,
     nodes: Vec<ParsedNode>,
 }
 
@@ -113,20 +176,22 @@ struct ParsedNode {
     content: String,
 }
 
-fn parse_forward_body(body: &str) -> Result<ParsedForward, String> {
-    let mut lines = body.lines().map(str::trim_end);
+fn parse_forward_body(body: &str, target_name: &str) -> Result<ParsedForward, String> {
+    // 统一处理各种换行符：\r\n, \n, \r（手机 QQ 可能使用不同的换行方式）
+    let normalized = body.replace("\r\n", "\n").replace('\r', "\n");
+    let mut lines = normalized.lines().map(str::trim_end);
 
-    let group_line = loop {
+    let target_line = loop {
         match lines.next() {
             Some(l) if l.trim().is_empty() => continue,
             Some(l) => break l,
-            None => return Err("缺少群号（首行应为 `#cmd forward <群号>`）".into()),
+            None => return Err(format!("缺少{target_name}（首行应为目标号码）")),
         }
     };
-    let group_id: i64 = group_line
+    let target_id: i64 = target_line
         .trim()
         .parse()
-        .map_err(|_| format!("群号不合法：`{}`", group_line.trim()))?;
+        .map_err(|_| format!("{target_name}不合法：`{}`", target_line.trim()))?;
 
     let mut nodes = Vec::new();
     for (idx, raw) in lines.enumerate() {
@@ -142,10 +207,10 @@ fn parse_forward_body(body: &str) -> Result<ParsedForward, String> {
         return Err("至少需要 1 条消息".into());
     }
 
-    Ok(ParsedForward { group_id, nodes })
+    Ok(ParsedForward { target_id, nodes })
 }
 
-/// 解析单行：`<qq>|<nickname> <content>`
+/// 解析单行：`<qq>/<nickname> <content>`
 fn parse_node_line(line: &str) -> Result<ParsedNode, String> {
     let (head, content) = line
         .split_once(char::is_whitespace)
@@ -156,8 +221,8 @@ fn parse_node_line(line: &str) -> Result<ParsedNode, String> {
     }
 
     let (qq_str, nickname) = head
-        .split_once('|')
-        .ok_or("缺少昵称（QQ号 与 昵称之间用 `|` 分隔）")?;
+        .split_once('/')
+        .ok_or("缺少昵称（QQ号 与 昵称之间用 `/` 分隔）")?;
     let nickname = nickname.trim().to_string();
     if nickname.is_empty() {
         return Err("昵称为空".into());
@@ -169,6 +234,28 @@ fn parse_node_line(line: &str) -> Result<ParsedNode, String> {
         nickname,
         content: content.to_string(),
     })
+}
+
+/// 解析不需要目标号码的转发内容（用于 forward_private，目标为当前发送者）
+fn parse_forward_body_no_target(body: &str) -> Result<Vec<ParsedNode>, String> {
+    let normalized = body.replace("\r\n", "\n").replace('\r', "\n");
+    let lines = normalized.lines().map(str::trim_end);
+
+    let mut nodes = Vec::new();
+    for (idx, raw) in lines.enumerate() {
+        if raw.trim().is_empty() {
+            continue;
+        }
+        let node = parse_node_line(raw)
+            .map_err(|e| format!("第 {} 条消息解析失败（`{raw}`）：{e}", idx + 1))?;
+        nodes.push(node);
+    }
+
+    if nodes.is_empty() {
+        return Err("至少需要 1 条消息".into());
+    }
+
+    Ok(nodes)
 }
 
 fn format_stats(ctx: &HandlerContext) -> String {
@@ -192,24 +279,39 @@ fn format_stats(ctx: &HandlerContext) -> String {
     )
 }
 
-fn format_help() -> String {
+pub fn format_help() -> String {
     "\
---- 私聊管理指令 ---\n\
+--- 私聊指令 ---\n\
 #cmd stats - 运行状态 & Token 用量\n\
 #cmd help  - 显示本帮助\n\
-#cmd forward <群号>\\n<qq>|<昵称> <内容>...  - 发送群合并转发\n\
+#cmd word <单词> - 查单词释义+发音\n\
+#cmd forward <群号> - 发送群合并转发\n\
+#cmd forward_private - 发送私聊合并转发（发给自己）\n\
+（合并转发格式：每行「QQ号/昵称 消息内容」）\n\
 \n\
 --- 群聊功能 ---\n\
-运势 / 求签     - 今日运势\n\
-语录 / 名言     - 随机名人名言\n\
-成语接龙 / 结束接龙 - 成语接龙游戏\n\
-水群排行        - 今日发言排行\n\
-总结            - AI 总结最近聊天\n\
-赞我            - 点赞（最多 50 个）\n\
-@bot            - AI 聊天\n\
+运势 / 求签 / 今日运势 - 今日运势（每日一次）\n\
+语录 / 名言 / 名人名言 - 随机名人名言\n\
+成语接龙 - 开始成语接龙游戏\n\
+结束接龙 - 结束当前接龙\n\
+水群排行 - 今日发言排行榜\n\
+总结 / 消息摘要 - AI 总结最近聊天\n\
+赞我 - 点赞（最多 50 个）\n\
+单词 <英文> - 查单词翻译+发音\n\
+随机单词 / 背单词 - 随机学一个单词\n\
+朗读 <英文文本> - 文字转语音朗读\n\
+戳一戳机器人 - 随机回复\n\
+@机器人 + 消息 - AI 聊天（5分钟会话记忆）\n\
 \n\
 --- 群管理员指令 ---\n\
-#角色 <角色名/默认> - 切换全群 AI 人设\n\
-#撤回监控 开启/关闭/状态 - 撤回消息曝光"
+#角色 <名称> - 切换 AI 人设（猫娘/毒舌/哲学家/老中医/诗人/默认）\n\
+#撤回监控 开启 - 开启撤回消息曝光\n\
+#撤回监控 关闭 - 关闭撤回消息曝光\n\
+#撤回监控 状态 - 查看当前状态\n\
+\n\
+--- 自动功能 ---\n\
+新成员入群验证（算术题，60秒超时踢出）\n\
+复读机（连续相同消息自动复读）\n\
+每日定时点赞（群主/管理员）"
         .to_string()
 }
