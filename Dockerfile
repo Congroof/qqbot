@@ -22,7 +22,7 @@ RUN cargo build --release --bin napcat-bot
 
 # ---- runtime ----
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates libssl3 tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/napcat-bot /usr/local/bin/napcat-bot
 ENV RUST_LOG=info
 ENTRYPOINT ["napcat-bot"]

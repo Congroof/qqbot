@@ -264,6 +264,9 @@ async fn notify_owner(
         .call(SendPrivateForwardMsg {
             user_id: owner_id,
             messages: nodes,
+            source: None,
+            summary: None,
+            prompt: None,
         })
         .await
     {

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use onebot::api::payload::{SendGroupForwardMsg, SendPrivateForwardMsg, SendPrivateMsg};
 use onebot::event::message::PrivateMessageEvent;
 use onebot::message::MessageSegment;
@@ -15,6 +17,19 @@ pub async fn handle_private_cmd(ctx: &mut HandlerContext, evt: &PrivateMessageEv
 
     let cmd = cmd.trim_start_matches(' ').trim_end();
     let sender_id = evt.user_id;
+
+    // `识别图片` / `ocr` 命令：进入等待图片状态
+    if cmd == "识别图片" || cmd == "ocr" {
+        ctx.pending_ocr.insert(sender_id, Instant::now());
+        let _ = ctx.api.call(SendPrivateMsg {
+            user_id: sender_id,
+            message: Message::from(vec![MessageSegment::text(
+                "请发送需要识别的图片（支持中英文）",
+            )]),
+            auto_escape: None,
+        }).await;
+        return true;
+    }
 
     // `word` 命令需要发送语音，单独处理。
     if let Some(word) = cmd.strip_prefix("word ") {
@@ -107,6 +122,9 @@ async fn handle_forward_group(ctx: &HandlerContext, body: &str, _sender_id: i64)
         .call(SendGroupForwardMsg {
             group_id: parsed.target_id,
             messages: nodes,
+            source: None,
+            summary: None,
+            prompt: None,
         })
         .await
     {
@@ -121,22 +139,47 @@ async fn handle_forward_group(ctx: &HandlerContext, body: &str, _sender_id: i64)
 
 const FORWARD_PRIVATE_USAGE: &str = "\
 用法（多行，支持任意多条消息）：\n\
-#cmd forward_private\n\
+#cmd forward_private [自定义标题]\n\
 <QQ号>/<昵称> <消息内容>\n\
 <QQ号>/<昵称> <消息内容>\n\
 ...（一行一条，可以写很多行）\n\
 \n\
-说明：每行用 `/` 分隔 QQ 与昵称，再用空格分隔昵称与正文。\n\
-消息会发送给当前私聊对象（即你自己）。\n\
+说明：\n\
+- 标题可选，不填则默认显示「合并转发」\n\
+- 每行用 `/` 分隔 QQ 与昵称，再用空格分隔昵称与正文\n\
+- 消息会发送给当前私聊对象（即你自己）\n\
 \n\
 示例：\n\
-#cmd forward_private\n\
+#cmd forward_private 今日聊天精选\n\
 10001/张三 你好呀\n\
 10002/李四 今天天气不错\n\
 10003/王五 我也觉得";
 
 async fn handle_forward_private(ctx: &HandlerContext, body: &str, sender_id: i64) -> String {
-    let parsed = match parse_forward_body_no_target(body) {
+    let normalized = body.replace("\r\n", "\n").replace('\r', "\n");
+    let trimmed = normalized.trim_start_matches('\n');
+
+    // 第一行为可选标题，如果第一行不是消息节点（不含 `/`），则当作标题
+    let (title, msg_body) = match trimmed.split_once('\n') {
+        Some((first_line, rest)) => {
+            let fl = first_line.trim();
+            if fl.is_empty() || fl.contains('/') {
+                ("合并转发".to_string(), trimmed.to_string())
+            } else {
+                (fl.to_string(), rest.to_string())
+            }
+        }
+        None => {
+            let fl = trimmed.trim();
+            if fl.is_empty() || fl.contains('/') {
+                ("合并转发".to_string(), trimmed.to_string())
+            } else {
+                return format!("解析失败：至少需要 1 条消息\n\n{FORWARD_PRIVATE_USAGE}");
+            }
+        }
+    };
+
+    let parsed = match parse_forward_body_no_target(&msg_body) {
         Ok(p) => p,
         Err(e) => return format!("解析失败：{e}\n\n{FORWARD_PRIVATE_USAGE}"),
     };
@@ -157,6 +200,9 @@ async fn handle_forward_private(ctx: &HandlerContext, body: &str, sender_id: i64
         .call(SendPrivateForwardMsg {
             user_id: sender_id,
             messages: nodes,
+            source: Some(title.clone()),
+            summary: Some(format!("查看 {} 条消息", count)),
+            prompt: Some(title),
         })
         .await
     {
@@ -286,8 +332,9 @@ pub fn format_help() -> String {
 #cmd help  - 显示本帮助\n\
 #cmd word <单词> - 查单词释义+发音\n\
 #cmd forward <群号> - 发送群合并转发\n\
-#cmd forward_private - 发送私聊合并转发（发给自己）\n\
+#cmd forward_private [标题] - 私聊合并转发（可选自定义标题）\n\
 （合并转发格式：每行「QQ号/昵称 消息内容」）\n\
+#cmd 识别图片 - OCR 文字识别（发指令后60秒内发图片）\n\
 \n\
 --- 群聊功能 ---\n\
 运势 / 求签 / 今日运势 - 今日运势（每日一次）\n\

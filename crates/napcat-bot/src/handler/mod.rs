@@ -11,6 +11,7 @@ pub mod request;
 pub mod stats;
 pub mod summary;
 pub mod verify;
+pub mod ocr;
 pub mod vocab;
 
 use std::collections::{HashMap, VecDeque};
@@ -162,6 +163,8 @@ pub struct HandlerContext {
     pub group_roles: GroupRoleMap,
     pub recall_toggle: RecallToggle,
     pub dictionary: Dictionary,
+    /// 正在等待 OCR 图片的用户 ID → 请求发起时间（私聊，60秒超时）
+    pub pending_ocr: HashMap<i64, Instant>,
 }
 
 impl HandlerContext {
@@ -188,6 +191,7 @@ impl HandlerContext {
             group_roles: HashMap::new(),
             recall_toggle,
             dictionary,
+            pending_ocr: HashMap::new(),
         }
     }
 
@@ -260,6 +264,9 @@ pub async fn dispatch(ctx: &mut HandlerContext, event: &Event) {
                 onebot::event::MessageEvent::Private(evt) => {
                     ctx.self_id = evt.self_id;
                     if cmd::handle_private_cmd(ctx, evt).await {
+                        return;
+                    }
+                    if ocr::handle_pending_ocr(ctx, evt).await {
                         return;
                     }
                     // 私聊 AI 聊天已禁用，避免误触

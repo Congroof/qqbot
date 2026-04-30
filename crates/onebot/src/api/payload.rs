@@ -83,6 +83,12 @@ impl ApiAction for GetForwardMsg {
 pub struct SendGroupForwardMsg {
     pub group_id: i64,
     pub messages: Vec<MessageSegment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
 }
 impl ApiAction for SendGroupForwardMsg {
     const ACTION: &'static str = "send_group_forward_msg";
@@ -96,6 +102,12 @@ impl ApiAction for SendGroupForwardMsg {
 pub struct SendPrivateForwardMsg {
     pub user_id: i64,
     pub messages: Vec<MessageSegment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
 }
 impl ApiAction for SendPrivateForwardMsg {
     const ACTION: &'static str = "send_private_forward_msg";
