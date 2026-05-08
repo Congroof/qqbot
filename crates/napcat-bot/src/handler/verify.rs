@@ -21,6 +21,11 @@ pub async fn handle_group_increase(ctx: &mut HandlerContext, evt: &GroupIncrease
         return;
     }
 
+    // 管理员/群主邀请入群时跳过验证
+    if evt.sub_type == "invite" {
+        return;
+    }
+
     let mut rng = rand::rng();
     let a: i32 = rng.random_range(1..=20);
     let b: i32 = rng.random_range(1..=20);

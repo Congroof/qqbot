@@ -239,7 +239,7 @@ fn is_at_bot(msg: &Message, self_id: i64) -> bool {
     let self_id_str = self_id.to_string();
     for seg in msg.segments() {
         if let MessageSegment::At { qq } = seg {
-            if qq == &self_id_str || qq == "all" {
+            if qq == &self_id_str {
                 return true;
             }
         }

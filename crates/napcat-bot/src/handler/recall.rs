@@ -117,6 +117,11 @@ pub async fn handle_group_recall(ctx: &HandlerContext, evt: &GroupRecallEvent) {
         return;
     }
 
+    // 管理员/群主撤回他人消息时不曝光
+    if evt.operator_id != evt.user_id {
+        return;
+    }
+
     if !ctx.recall_toggle.is_enabled(evt.group_id) {
         return;
     }
