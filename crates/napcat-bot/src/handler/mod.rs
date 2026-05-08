@@ -1,6 +1,7 @@
 pub mod ai_chat;
 pub mod cmd;
 pub mod fortune;
+pub mod gencdk;
 pub mod idiom;
 pub mod like;
 pub mod poke;
@@ -304,6 +305,9 @@ pub async fn dispatch(ctx: &mut HandlerContext, event: &Event) {
                         return;
                     }
                     if vocab::handle_vocab(ctx, evt).await {
+                        return;
+                    }
+                    if gencdk::handle_gencdk(ctx, evt).await {
                         return;
                     }
                     if stats::handle_stats(ctx, evt).await {

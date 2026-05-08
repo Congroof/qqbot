@@ -61,7 +61,7 @@ pub async fn handle_answer(ctx: &mut HandlerContext, evt: &GroupMessageEvent) ->
             group_id: evt.group_id,
             message: Message::from(vec![
                 MessageSegment::at(evt.user_id.to_string()),
-                MessageSegment::text(" 验证通过！欢迎加入，有什么问题随时 @我 哦~"),
+                MessageSegment::text(" 验证通过！欢迎加入，入群请先看群公告与精华消息，包含有说明与指导，有什么问题随时 @我 哦~ -by bot"),
             ]),
             auto_escape: None,
         }).await;
